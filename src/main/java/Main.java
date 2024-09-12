@@ -36,6 +36,16 @@ public class Main {
             String[] request = line.split(" ");
             String urlPath = request[1];
             Map<String, String> headers = new HashMap<>();
+
+            // Parse headers
+            String headerLine;
+            while (!(headerLine = reader.readLine()).isEmpty()) {
+                String[] headerParts = headerLine.split(": ");
+                if (headerParts.length == 2) {
+                    headers.put(headerParts[0], headerParts[1]);
+                }
+            }
+
             String response = getHttpResponse(urlPath, headers);
 
             output.write(response.getBytes());
@@ -50,22 +60,17 @@ public class Main {
 
         if ("/".equals(urlPath)) {
             httpResponse = "HTTP/1.1 200 OK\r\n\r\n";
+        } else if ("/user-agent".equals(urlPath)) {  // Add this condition for /user-agent
+            String userAgent = headers.getOrDefault("User-Agent", "unknown");
+            httpResponse = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + userAgent.length() + "\r\n\r\n" + userAgent;
         } else if (urlPath.startsWith("/files/")) {
             String filename = urlPath.substring(7); // Extract the filename after "/files/"
             File file = new File(directory, filename);
-
             if (file.exists()) {
                 byte[] fileContent = Files.readAllBytes(file.toPath());
-                headers.put("Content-Type", "application/octet-stream");
-                headers.put("Content-Length", String.valueOf(fileContent.length));
-
-                // Build the HTTP response headers
-                StringBuilder headerBuilder = new StringBuilder();
-                headerBuilder.append("HTTP/1.1 200 OK\r\n");
-                headers.forEach((key, value) -> headerBuilder.append(key).append(": ").append(value).append("\r\n"));
-                headerBuilder.append("\r\n");
-
-                httpResponse = headerBuilder.toString() + new String(fileContent);
+                httpResponse = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: " +
+                        fileContent.length + "\r\n\r\n";
+                httpResponse += new String(fileContent);
             } else {
                 httpResponse = "HTTP/1.1 404 Not Found\r\n\r\n";
             }
