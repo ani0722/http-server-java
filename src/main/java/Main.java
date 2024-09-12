@@ -3,17 +3,21 @@ import java.net.ServerSocket;
 import java.net.Socket;
 
 public class Main {
+    private static String filesDirectory = "/tmp/"; // Default directory
+
     public static void main(String[] args) {
+        if (args.length > 1 && args[0].equals("--directory")) {
+            filesDirectory = args[1];
+        }
+
         System.out.println("Logs from your program will appear here!");
 
         try (ServerSocket serverSocket = new ServerSocket(4221)) {
             serverSocket.setReuseAddress(true);
 
-            // Continuously accept incoming connections and spawn a new thread for each client.
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                System.out.println("Accepted new connection");
-                new Thread(() -> handleClient(clientSocket)).start();  // Start a new thread to handle the client.
+                new Thread(() -> handleClient(clientSocket)).start();
             }
         } catch (IOException e) {
             System.out.println("IOException: " + e.getMessage());
@@ -25,35 +29,50 @@ public class Main {
              OutputStream output = clientSocket.getOutputStream();
              BufferedReader reader = new BufferedReader(new InputStreamReader(input))) {
 
-            // Read the first line of the request.
             String line = reader.readLine();
-            String[] HttpRequest = line.split(" ");
-            String[] str = HttpRequest[1].split("/");
+            if (line == null) return;
 
-            // Check the path and respond accordingly.
-            if (HttpRequest[1].equals("/")) {
-                String response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\n\r\n";
-                output.write(response.getBytes());
-            } else if (str[1].equals("user-agent")) {
-                reader.readLine();
-                String useragent = reader.readLine().split("\\s+")[1];
-                String reply = String.format(
-                        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %s\r\n\r\n%s\r\n",
-                        useragent.length(), useragent);
-                output.write(reply.getBytes());
-            } else if ((str.length > 2 && str[1].equals("echo"))) {
-                String responsebody = str[2];
-                String finalstr = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + responsebody.length() +
-                        "\r\n\r\n" + responsebody;
-                output.write(finalstr.getBytes());
+            String[] HttpRequest = line.split(" ");
+            String path = HttpRequest[1];
+
+            if (path.startsWith("/files/")) {
+                String filename = path.substring(7); // Extract the filename
+                File file = new File(filesDirectory + filename);
+
+                if (file.exists() && !file.isDirectory()) {
+                    byte[] fileContent = readFileToByteArray(file);
+                    String responseHeader = String.format(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n",
+                            fileContent.length);
+                    output.write(responseHeader.getBytes());
+                    output.write(fileContent); // Write the file content as the response body
+                } else {
+                    String notFoundResponse = "HTTP/1.1 404 Not Found\r\n\r\n";
+                    output.write(notFoundResponse.getBytes());
+                }
             } else {
-                output.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes());
+                String notFoundResponse = "HTTP/1.1 404 Not Found\r\n\r\n";
+                output.write(notFoundResponse.getBytes());
             }
 
             output.flush();
-            clientSocket.close();  // Close the connection after sending the response.
+            clientSocket.close();
         } catch (IOException e) {
             System.out.println("Error handling client: " + e.getMessage());
         }
+    }
+
+    private static byte[] readFileToByteArray(File file) throws IOException {
+        FileInputStream fis = null;
+        byte[] fileData = new byte[(int) file.length()];
+        try {
+            fis = new FileInputStream(file);
+            fis.read(fileData);
+        } finally {
+            if (fis != null) {
+                fis.close();
+            }
+        }
+        return fileData;
     }
 }
